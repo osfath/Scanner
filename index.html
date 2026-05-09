@@ -98,10 +98,9 @@
         let lastScannedCode = "";
         let lastScannedTime = 0;
         
-        // قفل الوعود (Promise Lock) لمنع التداخل والـ "already under transition"
+        // قفل الوعود لمنع الأخطاء
         let cameraOperationPromise = null;
 
-        // عناصر واجهة المستخدم
         const btnStart = document.getElementById('btnStart');
         const btnStop = document.getElementById('btnStop');
         const btnTorch = document.getElementById('btnTorch');
@@ -114,9 +113,7 @@
         const emptyMsg = document.getElementById('emptyMsg');
         const badgeCount = document.getElementById('badgeCount');
         const toastEl = document.getElementById('toast');
-        const barcodeListContainer = document.getElementById('barcodeListContainer');
 
-        // دالة إصدار صوت "بيب"
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playBeep() {
             if(audioCtx.state === 'suspended') audioCtx.resume();
@@ -131,14 +128,12 @@
             oscillator.stop(audioCtx.currentTime + 0.1);
         }
 
-        // إظهار تنبيه
         function showToast(msg) {
             toastEl.textContent = msg;
             toastEl.classList.remove('opacity-0');
             setTimeout(() => toastEl.classList.add('opacity-0'), 2500);
         }
 
-        // إضافة باركود للقائمة
         function addBarcode(code) {
             code = code.trim();
             if (!code) return;
@@ -159,7 +154,6 @@
             if (navigator.vibrate) navigator.vibrate(50);
         }
 
-        // تحديث واجهة المستخدم
         function updateUI() {
             badgeCount.textContent = scannedBarcodes.length;
             
@@ -182,37 +176,34 @@
             }
         }
 
-        // حذف باركود
         window.removeBarcode = function(index) {
             scannedBarcodes.splice(index, 1);
             updateUI();
         }
 
-        // تشغيل الكاميرا بأمان
+        // تشغيل الكاميرا المطور (متجاوب مع الدقة والفوكس)
         function startCamera() {
-            // منع تنفيذ الأمر إذا كانت هناك عملية قيد التشغيل أو الكاميرا تعمل بالفعل
             if (cameraOperationPromise || isScanning) return; 
 
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("reader");
             }
             
-            // تعطيل الزر لتجنب الضغط المزدوج
             btnStart.disabled = true;
             btnStart.textContent = "جاري التشغيل...";
 
+            // مساحة قراءة ضخمة ومتجاوبة مع حجم الشاشة (تأخذ 90% من العرض و 60% من الطول)
             const config = { 
-                fps: 10, 
-                qrbox: { width: 250, height: 150 }
+                fps: 15, 
+                qrbox: function(viewfinderWidth, viewfinderHeight) {
+                    return {
+                        width: Math.floor(viewfinderWidth * 0.9),
+                        height: Math.floor(viewfinderHeight * 0.6)
+                    };
+                }
             };
             
-            // القفل الآمن
-            cameraOperationPromise = html5QrCode.start(
-                { facingMode: "environment" }, 
-                config,
-                (decodedText) => { addBarcode(decodedText); },
-                (errorMessage) => { /* صمت الأخطاء */ }
-            ).then(() => {
+            const onCameraStarted = () => {
                 isScanning = true;
                 torchOn = false;
                 btnStart.classList.add('hidden');
@@ -220,26 +211,66 @@
                 btnTorch.classList.remove('hidden');
                 btnTorch.innerHTML = '🔦 المصباح';
                 btnTorch.classList.replace('bg-slate-700', 'bg-yellow-500');
+
+                // إجبار الفوكس المستمر فور عمل الكاميرا لتوضيح الصورة
+                const videoEl = document.querySelector("#reader video");
+                if (videoEl && videoEl.srcObject) {
+                    const track = videoEl.srcObject.getVideoTracks()[0];
+                    if (track && track.getCapabilities) {
+                        const caps = track.getCapabilities();
+                        if (caps.focusMode && caps.focusMode.includes('continuous')) {
+                            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(e => console.log(e));
+                        }
+                    }
+                }
+            };
+
+            // 1. المحاولة الأولى: تشغيل الكاميرا الخلفية حصراً (هذا يضمن أقوى أداء للفوكس في الموبايل)
+            cameraOperationPromise = html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => { addBarcode(decodedText); },
+                (errorMessage) => { /* صمت */ }
+            ).then(() => {
+                onCameraStarted();
+            }).catch((err) => {
+                // 2. المحاولة الثانية: إذا فشلت (كأن تكون تستخدم لابتوب)، نجلب الكاميرا الأمامية
+                return Html5Qrcode.getCameras().then(devices => {
+                    if (devices && devices.length > 0) {
+                        return html5QrCode.start(
+                            devices[0].id, 
+                            config,
+                            (decodedText) => { addBarcode(decodedText); },
+                            (errorMessage) => { /* صمت */ }
+                        ).then(() => {
+                            onCameraStarted();
+                        });
+                    } else {
+                        throw new Error("NoCamerasFound");
+                    }
+                });
             }).catch((err) => {
                 let errorMsg = "فشل الكاميرا! تأكد من الصلاحيات.";
                 if (window.isSecureContext === false) {
                     errorMsg = "يحتاج الموقع إلى HTTPS لتشغيل الكاميرا.";
+                } else if (err && typeof err === 'string' && err.includes('NotAllowedError')) {
+                    errorMsg = "مرفوض! الرجاء السماح بالكاميرا.";
                 } else if (err && err.name === 'NotAllowedError') {
                     errorMsg = "مرفوض! الرجاء السماح بالكاميرا.";
-                } else if (err && err.name === 'NotFoundError') {
-                    errorMsg = "لا توجد كاميرا خلفية متصلة بالجهاز.";
+                } else if (err && (err.name === 'NotFoundError' || err.message === 'NoCamerasFound')) {
+                    errorMsg = "لا توجد كاميرا متصلة بالجهاز.";
+                } else {
+                    errorMsg = "حدث خطأ: " + (err.message || err);
                 }
                 showToast(errorMsg);
                 console.error("Camera Start Error:", err);
             }).finally(() => {
-                // فك القفل وإرجاع الزر لحالته
                 cameraOperationPromise = null;
                 btnStart.disabled = false;
                 btnStart.textContent = "▶️ تشغيل الكاميرا";
             });
         }
 
-        // إيقاف الكاميرا بأمان
         function stopCamera() {
             if (cameraOperationPromise || !isScanning || !html5QrCode) return; 
             
@@ -261,7 +292,6 @@
             });
         }
 
-        // التحكم بالمصباح (الفلاش)
         btnTorch.addEventListener('click', async () => {
             if (!isScanning) return;
             
@@ -291,7 +321,6 @@
             }
         });
 
-        // دوال التصدير والإرسال
         function createExcelWorkbook() {
             const now = new Date();
             const yy = String(now.getFullYear()).slice(-2);
@@ -344,7 +373,6 @@
             window.open(url, '_blank');
         }
 
-        // ربط الأحداث
         btnStart.addEventListener('click', startCamera);
         btnStop.addEventListener('click', stopCamera);
         btnExport.addEventListener('click', exportExcel);
