@@ -38,10 +38,10 @@
 
         <!-- أزرار التحكم بالكاميرا والمصباح -->
         <div class="flex gap-2">
-            <button id="btnStart" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow transition-colors">
+            <button id="btnStart" class="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 text-white py-3 rounded-lg font-bold shadow transition-colors">
                 ▶️ تشغيل الكاميرا
             </button>
-            <button id="btnStop" class="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-lg font-bold shadow transition-colors hidden">
+            <button id="btnStop" class="flex-1 bg-slate-600 hover:bg-slate-700 disabled:bg-slate-400 text-white py-3 rounded-lg font-bold shadow transition-colors hidden">
                 ⏹️ إيقاف
             </button>
             <button id="btnTorch" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-lg font-bold shadow transition-colors hidden">
@@ -60,7 +60,6 @@
         <div class="flex-grow flex flex-col min-h-0 bg-white rounded-lg shadow-sm border border-slate-200">
             <div class="bg-slate-100 p-2 text-sm font-bold text-slate-600 rounded-t-lg border-b border-slate-200 flex justify-between items-center">
                 <span>الباركودات المقروءة:</span>
-                <span class="text-xs text-green-600 font-normal">دقة عالية (HD) 🟢</span>
             </div>
             <div class="overflow-y-auto p-2 flex-grow" id="barcodeListContainer">
                 <ul id="barcodeList" class="flex flex-col gap-2">
@@ -92,13 +91,15 @@
 
     <script>
         // المتغيرات الأساسية
-        let html5QrcodeScanner;
+        let html5QrCode = null;
         let scannedBarcodes = [];
         let isScanning = false;
-        let isTransitioning = false; // قفل لمنع التداخل أثناء تشغيل/إيقاف الكاميرا
         let torchOn = false;
         let lastScannedCode = "";
         let lastScannedTime = 0;
+        
+        // قفل الوعود (Promise Lock) لمنع التداخل والـ "already under transition"
+        let cameraOperationPromise = null;
 
         // عناصر واجهة المستخدم
         const btnStart = document.getElementById('btnStart');
@@ -134,7 +135,7 @@
         function showToast(msg) {
             toastEl.textContent = msg;
             toastEl.classList.remove('opacity-0');
-            setTimeout(() => toastEl.classList.add('opacity-0'), 2000);
+            setTimeout(() => toastEl.classList.add('opacity-0'), 2500);
         }
 
         // إضافة باركود للقائمة
@@ -187,36 +188,30 @@
             updateUI();
         }
 
-        // تهيئة وتشغيل الكاميرا بدقة عالية وذكاء اصطناعي
+        // تشغيل الكاميرا بأمان
         function startCamera() {
-            if (isTransitioning || isScanning) return; // منع التداخل والتشغيل المزدوج
-            isTransitioning = true; // تفعيل القفل
+            // منع تنفيذ الأمر إذا كانت هناك عملية قيد التشغيل أو الكاميرا تعمل بالفعل
+            if (cameraOperationPromise || isScanning) return; 
 
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5Qrcode("reader");
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
             }
             
+            // تعطيل الزر لتجنب الضغط المزدوج
+            btnStart.disabled = true;
+            btnStart.textContent = "جاري التشغيل...";
+
             const config = { 
-                fps: 20, 
-                qrbox: { width: 250, height: 120 },
-                aspectRatio: 1.0,
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: true
-                }
+                fps: 10, 
+                qrbox: { width: 250, height: 150 }
             };
             
-            const videoConstraints = {
-                facingMode: "environment",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                focusMode: "continuous"
-            };
-
-            html5QrcodeScanner.start(
-                videoConstraints, 
+            // القفل الآمن
+            cameraOperationPromise = html5QrCode.start(
+                { facingMode: "environment" }, 
                 config,
                 (decodedText) => { addBarcode(decodedText); },
-                (errorMessage) => { /* صمت الأخطاء العادية */ }
+                (errorMessage) => { /* صمت الأخطاء */ }
             ).then(() => {
                 isScanning = true;
                 torchOn = false;
@@ -226,18 +221,32 @@
                 btnTorch.innerHTML = '🔦 المصباح';
                 btnTorch.classList.replace('bg-slate-700', 'bg-yellow-500');
             }).catch((err) => {
-                showToast("فشل الكاميرا! تأكد من إعطاء الصلاحيات للمتصفح.");
+                let errorMsg = "فشل الكاميرا! تأكد من الصلاحيات.";
+                if (window.isSecureContext === false) {
+                    errorMsg = "يحتاج الموقع إلى HTTPS لتشغيل الكاميرا.";
+                } else if (err && err.name === 'NotAllowedError') {
+                    errorMsg = "مرفوض! الرجاء السماح بالكاميرا.";
+                } else if (err && err.name === 'NotFoundError') {
+                    errorMsg = "لا توجد كاميرا خلفية متصلة بالجهاز.";
+                }
+                showToast(errorMsg);
+                console.error("Camera Start Error:", err);
             }).finally(() => {
-                isTransitioning = false; // إيقاف القفل بعد اكتمال العملية
+                // فك القفل وإرجاع الزر لحالته
+                cameraOperationPromise = null;
+                btnStart.disabled = false;
+                btnStart.textContent = "▶️ تشغيل الكاميرا";
             });
         }
 
-        // إيقاف الكاميرا
+        // إيقاف الكاميرا بأمان
         function stopCamera() {
-            if (isTransitioning || !isScanning || !html5QrcodeScanner) return; // منع تداخل الأوامر
-            isTransitioning = true; // تفعيل القفل
+            if (cameraOperationPromise || !isScanning || !html5QrCode) return; 
+            
+            btnStop.disabled = true;
+            btnStop.textContent = "جاري الإيقاف...";
 
-            html5QrcodeScanner.stop().then(() => {
+            cameraOperationPromise = html5QrCode.stop().then(() => {
                 isScanning = false;
                 torchOn = false;
                 btnStop.classList.add('hidden');
@@ -246,7 +255,9 @@
             }).catch(err => {
                 console.log("Error stopping camera", err);
             }).finally(() => {
-                isTransitioning = false; // إيقاف القفل بعد الإيقاف
+                cameraOperationPromise = null;
+                btnStop.disabled = false;
+                btnStop.textContent = "⏹️ إيقاف";
             });
         }
 
@@ -257,7 +268,9 @@
             const videoEl = document.querySelector("#reader video");
             if (videoEl && videoEl.srcObject) {
                 const track = videoEl.srcObject.getVideoTracks()[0];
-                const capabilities = track.getCapabilities();
+                if (!track) return;
+                
+                const capabilities = track.getCapabilities && track.getCapabilities() || {};
                 
                 if (capabilities.torch) {
                     torchOn = !torchOn;
