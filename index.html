@@ -89,7 +89,7 @@
                     <i data-lucide="scan-line" class="w-6 h-6"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">الماسح الذكي</h1>
+                    <h1 class="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">PowerPrint</h1>
                     <p class="text-xs font-semibold mt-0.5" id="engine-status">جاري فحص المحرك...</p>
                 </div>
             </div>
@@ -267,9 +267,9 @@
         // التحقق من المحرك المستخدم وإظهاره للمستخدم
         if (isNativeSupported) {
             barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'qr_code'] });
-            engineStatus.innerHTML = '<span class="text-emerald-500">⚡ المحرك الخارق (Native)</span>';
+            engineStatus.innerHTML = '<span class="text-emerald-500"> Emerald (Native)</span>';
         } else {
-            engineStatus.innerHTML = '<span class="text-orange-500">🐢 المحرك الاحتياطي (Web)</span>';
+            engineStatus.innerHTML = '<span class="text-orange-500"> Spare (Web)</span>';
         }
 
         // تحديث القائمة عند التحميل
@@ -467,7 +467,7 @@
             }
 
             // رقم الواتساب الثابت بناءً على طلبك
-            const phoneNumber = "009647705964573";
+            const phoneNumber = "+9647705964573";
 
             const fileName = `Barcodes_${new Date().getTime()}.xlsx`;
             const barcodesStr = JSON.stringify([...barcodes].reverse());
