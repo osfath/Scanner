@@ -1,14 +1,15 @@
+```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>قارئ الباركود | PowerPrint</title>
+    <title>قارئ الباركود الخارق | PowerPrint</title>
     
     <!-- مكتبة Tailwind للتصميم المتجاوب -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- مكتبة html5-qrcode لتشغيل الكاميرا وقراءة الباركود -->
+    <!-- مكتبة html5-qrcode (كمحرك احتياطي) -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     
     <!-- مكتبة SheetJS لإنشاء ملفات الإكسل -->
@@ -21,438 +22,378 @@
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
         body { font-family: 'Tajawal', sans-serif; background-color: #f8fafc; }
         
-        #reader { width: 100%; border-radius: 0.75rem; overflow: hidden; border: none; }
-        #reader video { object-fit: cover; min-height: 260px; width: 100%; border-radius: 0.75rem; }
-        
-        /* إخفاء الروابط الإعلانية الخاصة بمكتبة الباركود */
-        #reader__dashboard_section_csr span, #reader__dashboard_section_csr a { display: none !important; }
-        
-        /* تأثير ليزر المسح */
-        .scan-container { position: relative; }
-        .scan-line {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: rgba(59, 130, 246, 0.8);
-            box-shadow: 0 0 8px 1px rgba(59, 130, 246, 0.5);
-            animation: scan 2s infinite linear;
-            display: none;
-            z-index: 10;
+        /* تأثير خط المسح الليزري للمحرك الخارق */
+        @keyframes scan { 
+            0% { top: 10%; } 
+            100% { top: 90%; } 
         }
-        @keyframes scan {
-            0% { top: 5%; opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { top: 95%; opacity: 0; }
+        .scan-line { 
+            animation: scan 2s infinite linear alternate; 
         }
-        .is-scanning .scan-line { display: block; }
         
-        /* شريط التمرير */
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        /* تنسيقات حاوية الكاميرا للمحرك الاحتياطي */
+        #reader { width: 100%; border: none; }
+        #reader video { object-fit: cover; min-height: 260px; width: 100%; }
+        #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink { display: none !important; }
+        #reader__dashboard_section_csr button {
+            background-color: #3b82f6 !important; color: white !important;
+            border: none !important; padding: 8px 16px !important;
+            border-radius: 8px !important; font-family: 'Tajawal', sans-serif !important;
+        }
+
+        /* شريط التمرير المخفي */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="flex flex-col h-screen text-slate-800 overscroll-none">
+<body class="text-slate-800 pb-24">
 
     <!-- شريط العنوان -->
-    <header class="bg-white border-b border-slate-200 p-4 shadow-sm flex justify-between items-center z-20 flex-none">
-        <div class="flex items-center gap-2 text-blue-600">
-            <i data-lucide="scan-line" class="w-6 h-6"></i>
-            <h1 class="text-xl font-bold tracking-wide text-slate-800">PowerPrint</h1>
-        </div>
-        <div class="bg-slate-100 px-3 py-1.5 rounded-md border border-slate-200 flex items-center gap-2">
-            <span class="text-sm font-semibold text-slate-500">العدد:</span>
-            <span id="badgeCount" class="text-blue-600 text-sm font-bold">0</span>
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-lg">
+                    <i data-lucide="scan-line" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 leading-tight">الماسح الذكي</h1>
+                    <p class="text-xs text-slate-500 font-medium" id="engine-status">جاري فحص المحرك...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="scan-counter" class="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-sm">
+                    0 مادة
+                </span>
+            </div>
         </div>
     </header>
 
-    <!-- المحتوى الرئيسي (مرن) -->
-    <main class="flex-auto flex flex-col gap-4 overflow-hidden p-4">
+    <main class="max-w-3xl mx-auto px-4 py-6">
         
-        <!-- مساحة الكاميرا (ثابتة لا تتقلص flex-none) -->
-        <div class="scan-container bg-slate-100 rounded-xl border border-slate-200 relative flex-none h-[260px]">
-            <div id="reader" class="h-full"></div>
-            <div class="scan-line" id="scanLine"></div>
-            <!-- رسالة توجيهية تظهر قبل التشغيل -->
-            <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-0">
+        <!-- حاوية الكاميرا المدمجة -->
+        <div class="relative bg-black rounded-2xl overflow-hidden shadow-lg mb-6 flex items-center justify-center min-h-[260px] border-4 border-slate-800">
+            
+            <!-- 1. المحرك الخارق (Native) -->
+            <video id="native-video" class="w-full h-full object-cover hidden absolute inset-0" autoplay playsinline></video>
+            <div id="scan-line" class="absolute left-0 w-full h-[2px] bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,1)] hidden scan-line z-10"></div>
+            
+            <!-- 2. المحرك الاحتياطي (html5-qrcode) -->
+            <div id="reader" class="w-full h-full hidden absolute inset-0 bg-black"></div>
+            
+            <!-- شاشة التوقف -->
+            <div id="camera-placeholder" class="text-slate-400 flex flex-col items-center py-12 z-0">
                 <i data-lucide="camera-off" class="w-12 h-12 mb-3 opacity-50"></i>
-                <span class="font-semibold">الكاميرا متوقفة</span>
+                <span class="font-medium">الكاميرا متوقفة</span>
             </div>
         </div>
 
-        <!-- أزرار التحكم بالكاميرا (ثابتة) -->
-        <div class="flex gap-3 flex-none">
-            <button id="btnStart" class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-semibold shadow-sm transition-colors flex justify-center items-center gap-2">
-                <i data-lucide="play" class="w-5 h-5"></i> تشغيل المسح
+        <!-- أزرار التحكم بالكاميرا -->
+        <div class="flex gap-3 mb-8">
+            <button id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+                <i data-lucide="play" class="w-5 h-5"></i>
+                بدء المسح
             </button>
-            <button id="btnStop" class="flex-1 bg-slate-700 hover:bg-slate-800 active:bg-slate-900 text-white py-3 rounded-lg font-semibold shadow-sm transition-colors hidden justify-center items-center gap-2">
-                <i data-lucide="square" class="w-5 h-5 fill-current"></i> إيقاف
-            </button>
-            <button id="btnTorch" class="flex-1 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 py-3 rounded-lg font-semibold shadow-sm transition-colors hidden justify-center items-center gap-2">
-                <i data-lucide="flashlight" class="w-5 h-5"></i> المصباح
-            </button>
-        </div>
-
-        <!-- الإدخال اليدوي (ثابت) -->
-        <div class="flex gap-2 bg-white p-1.5 rounded-lg shadow-sm border border-slate-200 flex-none focus-within:border-blue-400 transition-colors">
-            <div class="pl-2 pr-3 flex items-center text-slate-400">
-                <i data-lucide="keyboard" class="w-5 h-5"></i>
-            </div>
-            <input type="text" id="manualBarcode" placeholder="رقم الباركود اليدوي..." class="flex-1 border-0 bg-transparent focus:ring-0 text-base py-2 text-left font-mono placeholder-slate-400 outline-none" dir="ltr" inputmode="numeric">
-            <button id="btnAddManual" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-md font-semibold transition-colors flex items-center gap-1">
-                <i data-lucide="plus" class="w-4 h-4"></i> إضافة
+            <button id="btn-stop" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 hidden active:scale-[0.98]">
+                <i data-lucide="square" class="w-5 h-5 fill-current"></i>
+                إيقاف الكاميرا
             </button>
         </div>
 
-        <!-- قائمة الباركودات الممسوحة (مرنة وذات بكرة تمرير flex-auto min-h-0) -->
-        <div class="flex-auto min-h-0 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="bg-slate-50 p-3 text-sm font-bold text-slate-700 border-b border-slate-200 flex items-center gap-2">
-                <!-- الأيقونة المرفقة -->
-                <svg class="w-5 h-5 text-blue-600" viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 10.5C4 8.61438 4 7.67157 4.58579 7.08579C5.17157 6.5 6.11438 6.5 8 6.5H16C17.8856 6.5 18.8284 6.5 19.4142 7.08579C20 7.67157 20 8.61438 20 10.5V12.5C20 13.4428 20 13.9142 19.7071 14.2071C19.4142 14.5 18.9428 14.5 18 14.5H17.3C17.1586 14.5 17.0879 14.5 17.0439 14.4561C17 14.4121 17 14.3414 17 14.2V13.5C17 12.5572 17 12.0858 16.7071 11.7929C16.4142 11.5 15.9428 11.5 15 11.5H9C8.05719 11.5 7.58579 11.5 7.29289 11.7929C7 12.0858 7 12.5572 7 13.5V14.2C7 14.3414 7 14.4121 6.95607 14.4561C6.91213 14.5 6.84142 14.5 6.7 14.5H5C4.5286 14.5 4.29289 14.5 4.14645 14.3536C4 14.2071 4 13.9714 4 13.5V10.5Z" fill="currentColor"/>
-                    <path d="M7 20.7615L7 13.5C7 12.5572 7 12.0858 7.29289 11.7929C7.58579 11.5 8.05719 11.5 9 11.5L15 11.5C15.9428 11.5 16.4142 11.5 16.7071 11.7929C17 12.0858 17 12.5572 17 13.5L17 20.7615C17 21.0961 17 21.2634 16.8902 21.3378C16.7803 21.4121 16.625 21.35 16.3143 21.2257L14.6857 20.5743C14.594 20.5376 14.5481 20.5193 14.5 20.5193C14.4519 20.5193 14.406 20.5376 14.3143 20.5743L12.1857 21.4257C12.094 21.4624 12.0481 21.4807 12 21.4807C11.9519 21.4807 11.906 21.4624 11.8143 21.4257L9.6857 20.5743C9.594 20.5376 9.54815 20.5193 9.5 20.5193C9.45185 20.5193 9.406 20.5376 9.3143 20.5743L7.6857 21.2257C7.37502 21.35 7.21969 21.4121 7.10984 21.3378C7 21.2634 7 21.0961 7 20.7615Z" fill="currentColor" fill-opacity="0.24"/>
-                    <path d="M9.5 15L13.5 15" stroke="currentColor" stroke-linecap="round"/>
-                    <path d="M9.5 18L14.5 18" stroke="currentColor" stroke-linecap="round"/>
-                    <path d="M7 5.23913C7 4.54725 7 4.20131 7.16382 3.95155C7.23899 3.83693 7.33693 3.73899 7.45155 3.66382C7.70131 3.5 8.04725 3.5 8.73913 3.5H15.2609C15.9528 3.5 16.2987 3.5 16.5485 3.66382C16.6631 3.73899 16.761 3.83693 16.8362 3.95155C17 4.20131 17 4.54725 17 5.23913C17 5.34291 17 5.3948 16.9754 5.43227C16.9642 5.44946 16.9495 5.46415 16.9323 5.47543C16.8948 5.5 16.8429 5.5 16.7391 5.5H7.26087C7.15709 5.5 7.1052 5.5 7.06773 5.47543C7.05054 5.46415 7.03585 5.44946 7.02457 5.43227C7 5.3948 7 5.34291 7 5.23913Z" fill="currentColor"/>
-                </svg>
-                سجل الباركودات
-            </div>
-            <!-- البكرة (Scrollbar) تعمل هنا -->
-            <div class="overflow-y-auto p-3 flex-auto" id="barcodeListContainer">
-                <ul id="barcodeList" class="flex flex-col gap-2">
-                    <li class="flex flex-col items-center justify-center h-full text-slate-400 py-8" id="emptyMsg">
-                        <i data-lucide="inbox" class="w-10 h-10 mb-2 opacity-50"></i>
-                        <span>القائمة فارغة، ابدأ بمسح المواد...</span>
-                    </li>
-                </ul>
+        <!-- الإدخال اليدوي -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6">
+            <label class="block text-sm font-bold text-slate-700 mb-2">إدخال الباركود يدوياً:</label>
+            <div class="flex gap-2">
+                <input type="text" id="manual-barcode" placeholder="اكتب أو الصق الباركود هنا..." 
+                    class="flex-1 bg-slate-50 border border-slate-300 text-slate-900 text-lg rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full p-3 transition-colors" dir="ltr">
+                <button id="btn-add-manual" class="bg-slate-800 hover:bg-slate-900 text-white px-5 rounded-xl font-bold transition-colors active:scale-[0.98]">
+                    إضافة
+                </button>
             </div>
         </div>
+
+        <!-- قائمة الباركودات -->
+        <div class="flex items-center justify-between mb-3 px-1">
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <i data-lucide="list-ordered" class="w-5 h-5 text-blue-600"></i>
+                المواد الممسوحة
+            </h2>
+            <button id="btn-clear-all" class="text-red-500 hover:text-red-700 text-sm font-bold flex items-center gap-1 transition-colors">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                مسح الكل
+            </button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+            <ul id="barcode-list" class="divide-y divide-slate-100 max-h-[35vh] overflow-y-auto no-scrollbar">
+                <!-- العناصر تضاف هنا عبر جافاسكريبت -->
+                <li class="p-8 text-center text-slate-400 font-medium" id="empty-state">
+                    لم يتم مسح أي باركود بعد.<br>ابدأ الكاميرا أو أدخل الرقم يدوياً.
+                </li>
+            </ul>
+        </div>
+
     </main>
 
-    <!-- التصدير (ثابت بالأسفل) -->
-    <footer class="flex-none p-4 bg-white border-t border-slate-200 z-20 flex flex-col gap-3">
-        <div class="flex gap-3">
-            <button id="btnExport" class="flex-[2] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3.5 rounded-lg font-bold shadow-sm text-base flex items-center justify-center gap-2 transition-colors">
-                <i data-lucide="download" class="w-5 h-5"></i> حفظ كملف Excel
+    <!-- شريط الإجراءات السفلي (التصدير) -->
+    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40">
+        <div class="max-w-3xl mx-auto flex gap-3">
+            <button id="btn-export" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+                <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                تحميل Excel
             </button>
-            <button id="btnSendWA" class="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white py-3.5 rounded-lg font-bold shadow-sm flex items-center justify-center gap-2 transition-colors">
-                <i data-lucide="message-circle" class="w-5 h-5"></i> واتساب
+            <button id="btn-send-wa" class="flex-1 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+                <i data-lucide="send" class="w-5 h-5"></i>
+                إرسال واتساب
             </button>
         </div>
-    </footer>
-
-    <!-- رسائل التنبيه العائمة (Toast) -->
-    <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg transition-all duration-300 opacity-0 pointer-events-none z-50 whitespace-nowrap font-medium flex items-center gap-2 text-sm">
-        <i id="toastIcon" data-lucide="info" class="w-4 h-4 text-blue-400"></i>
-        <span id="toastText">تنبيه</span>
     </div>
 
+    <!-- صوت القراءة -->
+    <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+
     <script>
-        // تفعيل أيقونات Lucide
+        // تهيئة أيقونات Lucide
         lucide.createIcons();
 
         // المتغيرات الأساسية
-        let html5QrCode = null;
-        let scannedBarcodes = [];
-        let isScanning = false;
-        let torchOn = false;
-        let lastScannedCode = "";
-        let lastScannedTime = 0;
-        let cameraOperationPromise = null;
+        let barcodes = JSON.parse(localStorage.getItem('saved_barcodes')) || [];
+        
+        // عناصر الواجهة
+        const listContainer = document.getElementById('barcode-list');
+        const emptyState = document.getElementById('empty-state');
+        const counterElement = document.getElementById('scan-counter');
+        const beepSound = document.getElementById('beep-sound');
+        const manualBarcode = document.getElementById('manual-barcode');
+        const engineStatus = document.getElementById('engine-status');
+        
+        // أزرار
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const btnExport = document.getElementById('btn-export');
+        const btnSendWA = document.getElementById('btn-send-wa');
+        const btnAddManual = document.getElementById('btn-add-manual');
+        const btnClearAll = document.getElementById('btn-clear-all');
 
-        // عناصر واجهة المستخدم
-        const btnStart = document.getElementById('btnStart');
-        const btnStop = document.getElementById('btnStop');
-        const btnTorch = document.getElementById('btnTorch');
-        const btnExport = document.getElementById('btnExport');
-        const btnSendWA = document.getElementById('btnSendWA');
-        const btnAddManual = document.getElementById('btnAddManual');
-        const manualBarcode = document.getElementById('manualBarcode');
-        const barcodeList = document.getElementById('barcodeList');
-        const emptyMsg = document.getElementById('emptyMsg');
-        const badgeCount = document.getElementById('badgeCount');
-        const toastEl = document.getElementById('toast');
-        const toastText = document.getElementById('toastText');
-        const toastIcon = document.getElementById('toastIcon');
-        const scanContainer = document.querySelector('.scan-container');
-        const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+        // متغيرات المحركات
+        const isNativeSupported = ('BarcodeDetector' in window);
+        let barcodeDetector = null;
+        let nativeStream = null;
+        let isNativeScanning = false;
+        let lastNativeScanTime = 0;
+        let html5QrCode = null; // للمحرك الاحتياطي
 
-        // الصوت
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playBeep() {
-            if(audioCtx.state === 'suspended') audioCtx.resume();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.1);
+        // التحقق من المحرك المستخدم وإظهاره للمستخدم
+        if (isNativeSupported) {
+            barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'qr_code'] });
+            engineStatus.innerHTML = '<span class="text-green-300 font-bold">⚡ المحرك الخارق مفعل</span>';
+        } else {
+            engineStatus.innerHTML = '<span class="text-orange-300 font-bold">🐢 المحرك الاحتياطي مفعل</span>';
         }
 
-        // دالة التنبيهات
-        function showToast(msg, iconName = 'info', iconColor = 'text-blue-400') {
-            toastIcon.setAttribute('data-lucide', iconName);
-            toastIcon.className = `w-4 h-4 ${iconColor}`;
-            lucide.createIcons(); // تحديث الأيقونة
-            
-            toastText.textContent = msg;
-            toastEl.classList.remove('opacity-0', '-translate-y-4');
-            toastEl.classList.add('translate-y-0');
-            setTimeout(() => {
-                toastEl.classList.add('opacity-0', '-translate-y-4');
-                toastEl.classList.remove('translate-y-0');
-            }, 2500);
-        }
+        // تحديث القائمة عند التحميل
+        updateList();
 
+        // إضافة باركود جديد (الدالة المركزية)
         function addBarcode(code) {
             code = code.trim();
-            if (!code || code.length < 3) return; // تجاهل القراءات الخاطئة والقصيرة جداً
+            if (!code) return;
 
-            // منع تكرار الباركود في القائمة نهائياً
-            if (scannedBarcodes.includes(code)) {
-                showToast(`الباركود مكرر: ${code}`, 'alert-circle', 'text-amber-500');
-                // اهتزاز تنبيهي للخطأ (نبضتان سريعتان)
-                if (navigator.vibrate) navigator.vibrate([50, 100, 50]);
-                return;
-            }
+            // منع التكرار
+            if (barcodes.includes(code)) return;
 
-            const now = Date.now();
-            if (code === lastScannedCode && (now - lastScannedTime) < 2000) {
-                return;
-            }
+            // إضافة للبداية (الأحدث يظهر فوق)
+            barcodes.unshift(code);
+            saveData();
+            updateList();
 
-            lastScannedCode = code;
-            lastScannedTime = now;
-            
-            scannedBarcodes.unshift(code);
-            playBeep();
-            updateUI();
-            showToast(`تم مسح: ${code}`, 'check-circle', 'text-green-400');
-            
-            if (navigator.vibrate) navigator.vibrate(50);
+            // تشغيل الصوت والاهتزاز
+            try {
+                beepSound.currentTime = 0;
+                beepSound.play().catch(e => console.log("الصوت محظور مؤقتاً:", e));
+                if (navigator.vibrate) navigator.vibrate(150);
+            } catch (e) {}
         }
 
-        function updateUI() {
-            badgeCount.textContent = scannedBarcodes.length;
+        // إزالة باركود
+        function removeBarcode(index) {
+            barcodes.splice(index, 1);
+            saveData();
+            updateList();
+        }
+
+        // حفظ في LocalStorage
+        function saveData() {
+            localStorage.setItem('saved_barcodes', JSON.stringify(barcodes));
+        }
+
+        // تحديث واجهة المستخدم للقائمة
+        function updateList() {
+            counterElement.innerText = `${barcodes.length} مادة`;
             
-            if (scannedBarcodes.length === 0) {
-                emptyMsg.style.display = 'flex';
-                barcodeList.innerHTML = '';
-                barcodeList.appendChild(emptyMsg);
-            } else {
-                emptyMsg.style.display = 'none';
-                barcodeList.innerHTML = '';
-                scannedBarcodes.forEach((code, index) => {
-                    const li = document.createElement('li');
-                    li.className = 'bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm';
-                    li.innerHTML = `
-                        <div class="flex items-center gap-3 overflow-hidden">
-                            <div class="text-slate-400 w-6 flex items-center justify-center text-xs font-semibold shrink-0">${scannedBarcodes.length - index}</div>
-                            <span class="font-semibold text-slate-800 font-mono text-base truncate">${code}</span>
+            if (barcodes.length === 0) {
+                listContainer.innerHTML = '';
+                listContainer.appendChild(emptyState);
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            listContainer.innerHTML = '';
+
+            barcodes.forEach((code, index) => {
+                const li = document.createElement('li');
+                li.className = 'p-4 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors group';
+                
+                li.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="bg-blue-100 text-blue-700 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                            ${barcodes.length - index}
                         </div>
-                        <button onclick="removeBarcode(${index})" class="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition-colors shrink-0 outline-none">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    `;
-                    barcodeList.appendChild(li);
-                });
-                lucide.createIcons(); // تفعيل أيقونة الحذف للعناصر الجديدة
-            }
-        }
-
-        window.removeBarcode = function(index) {
-            scannedBarcodes.splice(index, 1);
-            updateUI();
-        }
-
-        function startCamera() {
-            if (cameraOperationPromise || isScanning) return; 
-
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
-            }
+                        <span class="text-slate-800 font-mono text-lg font-semibold truncate" dir="ltr">${code}</span>
+                    </div>
+                    <button onclick="removeBarcode(${index})" class="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all" title="حذف">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    </button>
+                `;
+                listContainer.appendChild(li);
+            });
             
-            btnStart.disabled = true;
-            btnStart.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> جاري التشغيل...`;
             lucide.createIcons();
+        }
 
-            const config = { 
-                fps: 15, 
-                qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    // تم توسيع المساحة هنا لتأخذ 95% من العرض و 75% من الطول
-                    return { width: Math.floor(viewfinderWidth * 0.95), height: Math.floor(viewfinderHeight * 0.75) };
-                },
-                // تحديد صيغ الباركود الرصينة فقط لمنع القراءات العشوائية والخاطئة من الظلال
-                formatsToSupport: [
-                    Html5QrcodeSupportedFormats.EAN_13,
-                    Html5QrcodeSupportedFormats.EAN_8,
-                    Html5QrcodeSupportedFormats.UPC_A,
-                    Html5QrcodeSupportedFormats.UPC_E,
-                    Html5QrcodeSupportedFormats.CODE_128,
-                    Html5QrcodeSupportedFormats.CODE_39,
-                    Html5QrcodeSupportedFormats.QR_CODE
-                ]
-            };
-            
-            const onCameraStarted = () => {
-                isScanning = true;
-                torchOn = false;
-                scanContainer.classList.add('is-scanning');
-                cameraPlaceholder.style.display = 'none';
+        // ==========================================
+        // أنظمة الكاميرا (الخارق + الاحتياطي)
+        // ==========================================
+
+        async function startCamera() {
+            btnStart.classList.add('hidden');
+            btnStop.classList.remove('hidden');
+            document.getElementById('camera-placeholder').classList.add('hidden');
+
+            if (isNativeSupported) {
+                // تشغيل المحرك الخارق
+                try {
+                    const video = document.getElementById('native-video');
+                    nativeStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+                    });
+                    video.srcObject = nativeStream;
+                    video.classList.remove('hidden');
+                    document.getElementById('scan-line').classList.remove('hidden');
+                    
+                    isNativeScanning = true;
+                    detectNativeLoop(video);
+                } catch (err) {
+                    alert("تعذر فتح الكاميرا: " + err.message);
+                    stopCamera();
+                }
+            } else {
+                // تشغيل المحرك الاحتياطي
+                document.getElementById('reader').classList.remove('hidden');
+                html5QrCode = new Html5Qrcode("reader");
+                const config = { fps: 10, qrbox: { width: 250, height: 150 } };
                 
-                btnStart.classList.add('hidden');
-                btnStop.classList.remove('hidden');
-                btnStop.style.display = 'flex';
-                btnTorch.classList.remove('hidden');
-                btnTorch.style.display = 'flex';
-                
-                // إجبار الفوكس المستمر فور عمل الكاميرا لتوضيح الصورة
-                const videoEl = document.querySelector("#reader video");
-                if (videoEl && videoEl.srcObject) {
-                    const track = videoEl.srcObject.getVideoTracks()[0];
-                    if (track && track.getCapabilities) {
-                        const caps = track.getCapabilities();
-                        if (caps.focusMode && caps.focusMode.includes('continuous')) {
-                            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(e => console.log(e));
+                html5QrCode.start({ facingMode: "environment" }, config, 
+                    (decodedText) => { addBarcode(decodedText); },
+                    (errorMessage) => { /* تجاهل أخطاء عدم العثور المستمرة */ }
+                ).catch((err) => {
+                    alert("فشل تشغيل الكاميرا: " + err);
+                    stopCamera();
+                });
+            }
+        }
+
+        async function detectNativeLoop(video) {
+            if (!isNativeScanning || !barcodeDetector) return;
+
+            try {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    const codes = await barcodeDetector.detect(video);
+                    if (codes.length > 0) {
+                        let code = codes[0].rawValue;
+                        let now = Date.now();
+                        // تأخير زمني 1 ثانية بين كل قراءة لنفس الكاميرا
+                        if (now - lastNativeScanTime > 1000) {
+                            addBarcode(code);
+                            lastNativeScanTime = now;
                         }
                     }
                 }
-            };
+            } catch (e) {}
 
-            cameraOperationPromise = html5QrCode.start(
-                { facingMode: "environment" }, 
-                config,
-                (decodedText) => { addBarcode(decodedText); },
-                (errorMessage) => { }
-            ).then(() => {
-                onCameraStarted();
-            }).catch((err) => {
-                return Html5Qrcode.getCameras().then(devices => {
-                    if (devices && devices.length > 0) {
-                        return html5QrCode.start(
-                            devices[0].id, config,
-                            (decodedText) => { addBarcode(decodedText); },
-                            (errorMessage) => { }
-                        ).then(() => { onCameraStarted(); });
-                    } else { throw new Error("NoCamerasFound"); }
-                });
-            }).catch((err) => {
-                let errorMsg = "تأكد من إعطاء صلاحية الكاميرا.";
-                if (window.isSecureContext === false) errorMsg = "الرابط ليس آمناً (HTTPS).";
-                showToast(errorMsg, 'alert-triangle', 'text-amber-400');
-            }).finally(() => {
-                cameraOperationPromise = null;
-                btnStart.disabled = false;
-                btnStart.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> تشغيل المسح`;
-                lucide.createIcons();
-            });
+            requestAnimationFrame(() => detectNativeLoop(video));
         }
 
         function stopCamera() {
-            if (cameraOperationPromise || !isScanning || !html5QrCode) return; 
-            
-            btnStop.disabled = true;
-            btnStop.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> الإيقاف...`;
-            lucide.createIcons();
+            btnStop.classList.add('hidden');
+            btnStart.classList.remove('hidden');
+            document.getElementById('camera-placeholder').classList.remove('hidden');
 
-            cameraOperationPromise = html5QrCode.stop().then(() => {
-                isScanning = false;
-                torchOn = false;
-                scanContainer.classList.remove('is-scanning');
-                cameraPlaceholder.style.display = 'flex';
-                
-                btnStop.classList.add('hidden');
-                btnTorch.classList.add('hidden');
-                btnStart.classList.remove('hidden');
-            }).finally(() => {
-                cameraOperationPromise = null;
-                btnStop.disabled = false;
-                btnStop.innerHTML = `<i data-lucide="square" class="w-5 h-5 fill-current"></i> إيقاف`;
-                lucide.createIcons();
-            });
-        }
-
-        btnTorch.addEventListener('click', async () => {
-            if (!isScanning) return;
-            const videoEl = document.querySelector("#reader video");
-            if (videoEl && videoEl.srcObject) {
-                const track = videoEl.srcObject.getVideoTracks()[0];
-                if (!track) return;
-                const capabilities = track.getCapabilities && track.getCapabilities() || {};
-                
-                if (capabilities.torch) {
-                    torchOn = !torchOn;
-                    try {
-                        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-                        if(torchOn) {
-                            btnTorch.classList.replace('bg-slate-200', 'bg-blue-100');
-                            btnTorch.classList.replace('text-slate-700', 'text-blue-700');
-                        } else {
-                            btnTorch.classList.replace('bg-blue-100', 'bg-slate-200');
-                            btnTorch.classList.replace('text-blue-700', 'text-slate-700');
-                        }
-                    } catch (e) { showToast("المتصفح يمنع المصباح", 'alert-triangle', 'text-amber-400'); }
-                } else {
-                    showToast("المصباح غير مدعوم بجهازك", 'info', 'text-slate-400');
+            if (isNativeSupported) {
+                // إيقاف المحرك الخارق
+                isNativeScanning = false;
+                if (nativeStream) {
+                    nativeStream.getTracks().forEach(track => track.stop());
+                }
+                document.getElementById('native-video').classList.add('hidden');
+                document.getElementById('scan-line').classList.add('hidden');
+            } else {
+                // إيقاف المحرك الاحتياطي
+                if (html5QrCode) {
+                    html5QrCode.stop().then(() => {
+                        document.getElementById('reader').classList.add('hidden');
+                        html5QrCode.clear();
+                    }).catch(err => console.log("خطأ في الإيقاف", err));
                 }
             }
-        });
-
-        // دالة إنشاء ملف إكسل محلي
-        function createExcelWorkbook() {
-            const now = new Date();
-            const yy = String(now.getFullYear()).slice(-2);
-            const mm = String(now.getMonth() + 1).padStart(2, '0');
-            const dd = String(now.getDate()).padStart(2, '0');
-            const hh = String(now.getHours()).padStart(2, '0');
-            const mins = String(now.getMinutes()).padStart(2, '0');
-            const ss = String(now.getSeconds()).padStart(2, '0');
-            const fileName = `bar${yy}${mm}${dd}-${hh}${mins}${ss}.xlsx`;
-
-            const ws_data = [...scannedBarcodes].reverse().map(code => [code]);
-            const ws = XLSX.utils.aoa_to_sheet(ws_data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Barcodes");
-
-            return { wb, fileName };
         }
+
+        // ==========================================
+        // التصدير والواتساب
+        // ==========================================
 
         function exportExcel() {
-            if (scannedBarcodes.length === 0) { showToast("القائمة فارغة!", 'alert-circle', 'text-amber-500'); return; }
-            const { wb, fileName } = createExcelWorkbook();
+            if (barcodes.length === 0) {
+                alert("لا توجد بيانات لتصديرها!");
+                return;
+            }
+
+            const data = [["الباركود"]];
+            // عكس المصفوفة ليكون الترتيب من الأقدم للأحدث في الإكسل
+            [...barcodes].reverse().forEach(code => {
+                data.push([code]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // ضبط عرض العمود
+            ws['!cols'] = [{ wch: 25 }];
+            
+            XLSX.utils.book_append_sheet(wb, ws, "الباركودات");
+            
+            const fileName = `Barcodes_${new Date().getTime()}.xlsx`;
             XLSX.writeFile(wb, fileName);
-            showToast("تم تنزيل الملف بنجاح!", 'check-circle', 'text-green-400');
         }
 
-        // إرسال كود بايثون عبر واتساب (الخطة المتفق عليها)
         function sendToWhatsApp() {
-            if (scannedBarcodes.length === 0) { showToast("القائمة فارغة!", 'alert-circle', 'text-amber-500'); return; }
-            
-            const phoneNumber = "9647705964573";
-            
-            // توليد الاسم
-            const now = new Date();
-            const yy = String(now.getFullYear()).slice(-2);
-            const mm = String(now.getMonth() + 1).padStart(2, '0');
-            const dd = String(now.getDate()).padStart(2, '0');
-            const hh = String(now.getHours()).padStart(2, '0');
-            const mins = String(now.getMinutes()).padStart(2, '0');
-            const ss = String(now.getSeconds()).padStart(2, '0');
-            const fileName = `bar${yy}${mm}${dd}-${hh}${mins}${ss}.xlsx`;
+            if (barcodes.length === 0) {
+                alert("لا توجد بيانات لإرسالها!");
+                return;
+            }
 
-            const barcodesArr = [...scannedBarcodes].reverse();
-            const barcodesStr = JSON.stringify(barcodesArr);
+            const phoneNumber = prompt("أدخل رقم الواتساب (مع رمز الدولة، مثال: 9647...):");
+            if (!phoneNumber) return;
 
-            const pyCode = `import os, sys, subprocess
+            const fileName = `Barcodes_${new Date().getTime()}.xlsx`;
+            const barcodesStr = JSON.stringify([...barcodes].reverse());
+            
+            // السكريبت الخاص بك لتوليد ملف إكسل من البايثون
+            const pyCode = `import os
+import sys
+import subprocess
 from pathlib import Path
 
-print("جاري تجهيز الملف...")
 try:
     import openpyxl
 except ImportError:
@@ -479,7 +420,10 @@ input("\\nاضغط Enter للإغلاق...")`;
             window.open(url, '_blank');
         }
 
-        // ربط الأحداث
+        // ==========================================
+        // ربط الأحداث المتبقية
+        // ==========================================
+
         btnStart.addEventListener('click', startCamera);
         btnStop.addEventListener('click', stopCamera);
         btnExport.addEventListener('click', exportExcel);
@@ -494,12 +438,23 @@ input("\\nاضغط Enter للإغلاق...")`;
             }
         });
 
+        // إضافة عند ضغط Enter
         manualBarcode.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                btnAddManual.click();
+            if(e.key === 'Enter') btnAddManual.click();
+        });
+
+        btnClearAll.addEventListener('click', () => {
+            if(barcodes.length === 0) return;
+            if(confirm("هل أنت متأكد من حذف جميع الباركودات؟")) {
+                barcodes = [];
+                saveData();
+                updateList();
             }
         });
 
     </script>
 </body>
 </html>
+
+
+```
