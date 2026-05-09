@@ -212,7 +212,15 @@
 
         function addBarcode(code) {
             code = code.trim();
-            if (!code) return;
+            if (!code || code.length < 3) return; // تجاهل القراءات الخاطئة والقصيرة جداً
+
+            // منع تكرار الباركود في القائمة نهائياً
+            if (scannedBarcodes.includes(code)) {
+                showToast(`الباركود مكرر: ${code}`, 'alert-circle', 'text-amber-500');
+                // اهتزاز تنبيهي للخطأ (نبضتان سريعتان)
+                if (navigator.vibrate) navigator.vibrate([50, 100, 50]);
+                return;
+            }
 
             const now = Date.now();
             if (code === lastScannedCode && (now - lastScannedTime) < 2000) {
@@ -277,8 +285,19 @@
             const config = { 
                 fps: 15, 
                 qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    return { width: Math.floor(viewfinderWidth * 0.85), height: Math.floor(viewfinderHeight * 0.5) };
-                }
+                    // تم توسيع المساحة هنا لتأخذ 95% من العرض و 75% من الطول
+                    return { width: Math.floor(viewfinderWidth * 0.95), height: Math.floor(viewfinderHeight * 0.75) };
+                },
+                // تحديد صيغ الباركود الرصينة فقط لمنع القراءات العشوائية والخاطئة من الظلال
+                formatsToSupport: [
+                    Html5QrcodeSupportedFormats.EAN_13,
+                    Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.UPC_A,
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.QR_CODE
+                ]
             };
             
             const onCameraStarted = () => {
